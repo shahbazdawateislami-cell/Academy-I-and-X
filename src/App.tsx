@@ -12,22 +12,10 @@ import History from './pages/History';
 import Backup from './pages/Backup';
 import Receipt from './pages/Receipt';
 import FeeReminders from './pages/FeeReminders';
-import Login from './pages/Login';
 import { useStore } from './store';
 
-import { useEffect } from 'react';
-import { signInAnonymously } from 'firebase/auth';
-import { auth } from './firebase';
-
 export default function App() {
-  const { user, loading } = useStore();
-
-  useEffect(() => {
-    // If not logged in and not loading, sign in anonymously to remove the barrier
-    if (!loading && !user) {
-      signInAnonymously(auth).catch(console.error);
-    }
-  }, [user, loading]);
+  const { loading } = useStore();
 
   if (loading) {
     return (
@@ -40,7 +28,6 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<Login />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="students" element={<Students />} />

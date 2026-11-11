@@ -16,12 +16,8 @@ const updateSW = registerSW({
   },
 });
 
-import { AuthProvider } from './contexts/AuthContext.tsx';
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <App />
   </StrictMode>,
 );
