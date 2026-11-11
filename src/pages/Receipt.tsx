@@ -19,6 +19,7 @@ export default function Receipt() {
   const { data, loading } = useStore();
   const receiptRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
+  const [copiedSMS, setCopiedSMS] = useState(false);
 
   const transaction = data.transactions.find((t) => t.id === id);
   const student = data.students.find((s) => s.id === transaction?.studentId);
@@ -123,8 +124,6 @@ export default function Receipt() {
   const handlePrint = () => {
     window.print();
   };
-
-  const [copiedSMS, setCopiedSMS] = useState(false);
 
   const buildReceiptTextMessage = () => {
     if (isDonor) {

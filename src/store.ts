@@ -2,20 +2,62 @@ import { useState, useEffect } from 'react';
 import { AppData, Student, Transaction } from './types';
 import { addMonthlyFeesIfNeeded } from './utils';
 import { db } from './firebase';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc, getDocFromServer } from 'firebase/firestore';
 
 let globalData: AppData = { students: [], transactions: [] };
 let isLoaded = false;
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      // Auth is not currently used in this app but we include it for the error schema
+      userId: null,
+      email: null,
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  // In a production app we might throw here, but for this store we'll just log and potentially show a UI alert
+}
 
 export function useStore() {
   const [data, setData] = useState<AppData>(globalData);
   const [loading, setLoading] = useState(!isLoaded);
 
   useEffect(() => {
-    // If it's already loaded, we still want to set up listeners if they aren't somehow,
-    // but in Firebase, multiple onSnapshot calls on the same query are fine, 
-    // or we can just let it attach.
-    
+    // Connection test
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if(error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration. The client appears to be offline.");
+        }
+      }
+    };
+    testConnection();
+
     // Migrate from local storage if data exists and hasn't been migrated
     const STORAGE_KEY = 'al_dahr_academy_data';
     const MIGRATED_KEY = 'al_dahr_academy_firebase_migrated';
@@ -42,7 +84,6 @@ export function useStore() {
             console.error('Failed to migrate local storage data', e);
           }
         } else {
-          // If no local data, just mark as migrated
           localStorage.setItem(MIGRATED_KEY, 'true');
         }
       }
@@ -58,7 +99,9 @@ export function useStore() {
       
       if (updated) {
         newStudents.forEach(student => {
-          updateDoc(doc(db, 'students', student.id), { ...student });
+          updateDoc(doc(db, 'students', student.id), { ...student }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, `students/${student.id}`);
+          });
         });
       }
       
@@ -66,18 +109,21 @@ export function useStore() {
       isLoaded = true;
       setData(globalData);
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'students');
     });
 
     const transactionsRef = collection(db, 'transactions');
     const unsubscribeTransactions = onSnapshot(query(transactionsRef), (snapshot) => {
       const transactionsList = snapshot.docs.map(doc => doc.data() as Transaction);
-      // Sort transactions by date descending to match local storage behavior (where new ones were prepended)
       transactionsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       
       globalData = { ...globalData, transactions: transactionsList };
       isLoaded = true;
       setData(globalData);
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'transactions');
     });
 
     return () => {
@@ -87,35 +133,63 @@ export function useStore() {
   }, []);
 
   const addStudent = async (student: Student) => {
-    setDoc(doc(db, 'students', student.id), student).catch(console.error);
+    try {
+      await setDoc(doc(db, 'students', student.id), student);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `students/${student.id}`);
+    }
   };
 
   const updateStudent = async (updatedStudent: Student) => {
-    setDoc(doc(db, 'students', updatedStudent.id), updatedStudent).catch(console.error);
+    try {
+      await setDoc(doc(db, 'students', updatedStudent.id), updatedStudent);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `students/${updatedStudent.id}`);
+    }
   };
 
   const deleteStudent = async (id: string) => {
-    deleteDoc(doc(db, 'students', id)).catch(console.error);
+    try {
+      await deleteDoc(doc(db, 'students', id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `students/${id}`);
+    }
   };
 
   const addTransaction = async (transaction: Transaction) => {
-    setDoc(doc(db, 'transactions', transaction.id), transaction).catch(console.error);
+    try {
+      await setDoc(doc(db, 'transactions', transaction.id), transaction);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, `transactions/${transaction.id}`);
+    }
   };
 
   const updateTransaction = async (updatedTransaction: Transaction) => {
-    setDoc(doc(db, 'transactions', updatedTransaction.id), updatedTransaction).catch(console.error);
+    try {
+      await setDoc(doc(db, 'transactions', updatedTransaction.id), updatedTransaction);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `transactions/${updatedTransaction.id}`);
+    }
   };
 
   const deleteTransaction = async (id: string) => {
-    deleteDoc(doc(db, 'transactions', id)).catch(console.error);
+    try {
+      await deleteDoc(doc(db, 'transactions', id));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `transactions/${id}`);
+    }
   };
 
   const importData = (importedData: AppData) => {
     importedData.students.forEach(student => {
-      setDoc(doc(db, 'students', student.id), student);
+      setDoc(doc(db, 'students', student.id), student).catch(err => {
+        handleFirestoreError(err, OperationType.WRITE, `students/${student.id}`);
+      });
     });
     importedData.transactions.forEach(transaction => {
-      setDoc(doc(db, 'transactions', transaction.id), transaction);
+      setDoc(doc(db, 'transactions', transaction.id), transaction).catch(err => {
+        handleFirestoreError(err, OperationType.WRITE, `transactions/${transaction.id}`);
+      });
     });
   };
 

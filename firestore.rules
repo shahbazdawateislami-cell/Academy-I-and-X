@@ -1,11 +1,74 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /students/{document} {
-      allow read, write: if true;
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
     }
-    match /transactions/{document} {
-      allow read, write: if true;
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Bootstrapped Admin
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'shahbazdawateislami@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Students Collection ---
+    match /students/{studentId} {
+      allow get, list: if isSignedIn();
+      allow create: if (isEmailVerified() || isAdmin()) && isValidId(studentId) && isValidStudent(incoming());
+      allow update: if (isEmailVerified() || isAdmin()) && isValidId(studentId) && isValidStudent(incoming());
+      allow delete: if isAdmin();
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['id', 'name', 'fatherName', 'mobile', 'totalFee', 'paidFee', 'remainingFee', 'admissionDate'])
+        && data.keys().hasOnly(['id', 'name', 'fatherName', 'mobile', 'totalFee', 'paidFee', 'remainingFee', 'admissionDate', 'notes', 'monthlyFee', 'lastFeeAddedMonth', 'status', 'donorName', 'donorMobile', 'donorAddress'])
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 200
+        && data.fatherName is string && data.fatherName.size() <= 200
+        && data.mobile is string && data.mobile.size() <= 20
+        && data.totalFee is number
+        && data.paidFee is number
+        && data.remainingFee is number
+        && data.admissionDate is string;
+    }
+
+    // --- Transactions Collection ---
+    match /transactions/{transactionId} {
+      allow get, list: if isSignedIn();
+      allow create: if (isEmailVerified() || isAdmin()) && isValidId(transactionId) && isValidTransaction(incoming());
+      allow update: if (isEmailVerified() || isAdmin()) && isValidId(transactionId) && isValidTransaction(incoming());
+      allow delete: if isAdmin();
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'type', 'category', 'amount', 'date', 'paymentMode'])
+        && data.keys().hasOnly(['id', 'type', 'category', 'amount', 'date', 'description', 'paymentMode', 'studentId', 'month', 'receiptNo', 'previouslyPaid', 'totalPaidAfter', 'remainingBalanceAfter', 'paidTo', 'donorName', 'donorMobile', 'donorAddress'])
+        && data.type in ['INCOME', 'EXPENSE', 'FEE']
+        && data.category is string && data.category.size() <= 100
+        && data.amount is number
+        && data.date is string
+        && data.paymentMode is string;
     }
   }
 }

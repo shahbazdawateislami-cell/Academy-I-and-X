@@ -147,36 +147,6 @@ export default function Dashboard() {
           )}
         </div>
       </div>
-
-      <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <Cloud className="w-5 h-5 text-[#4DA3FF]" />
-            <h3 className="font-bold text-slate-800">Cloud Storage</h3>
-          </div>
-          <span className="text-xs font-semibold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">Secure</span>
-        </div>
-        <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-          Your data is securely synced to Firebase Cloud. You have 1GB of free storage.
-        </p>
-        
-        <div className="space-y-2">
-          <div className="flex justify-between text-xs font-medium text-slate-600">
-            <span>{storageUsedKB} KB Used</span>
-            <span>1,000,000 KB Total</span>
-          </div>
-          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-[#4DA3FF] rounded-full"
-              style={{ width: `${Math.max(0.5, storagePercent)}%` }}
-            ></div>
-          </div>
-          <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1">
-            <span>{displayPercent}% Full</span>
-            <span>Storage will not fill up quickly.</span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

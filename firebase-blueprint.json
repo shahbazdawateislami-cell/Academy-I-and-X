@@ -37,7 +37,10 @@
         { "name": "previouslyPaid", "type": "number", "optional": true },
         { "name": "totalPaidAfter", "type": "number", "optional": true },
         { "name": "remainingBalanceAfter", "type": "number", "optional": true },
-        { "name": "paidTo", "type": "string", "optional": true }
+        { "name": "paidTo", "type": "string", "optional": true },
+        { "name": "donorName", "type": "string", "optional": true },
+        { "name": "donorMobile", "type": "string", "optional": true },
+        { "name": "donorAddress", "type": "string", "optional": true }
       ],
       "rules": [
         {
