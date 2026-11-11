@@ -1,8 +1,46 @@
 import { useState, useEffect } from 'react';
 import { AppData, Student, Transaction } from './types';
 import { addMonthlyFeesIfNeeded } from './utils';
-import { db } from './firebase';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc } from 'firebase/firestore';
+import { db, auth } from './firebase';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, updateDoc, getDocFromServer } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 let globalData: AppData = { students: [], transactions: [] };
 let isLoaded = false;
@@ -10,17 +48,41 @@ let isLoaded = false;
 export function useStore() {
   const [data, setData] = useState<AppData>(globalData);
   const [loading, setLoading] = useState(!isLoaded);
+  const [user, setUser] = useState(auth.currentUser);
 
   useEffect(() => {
-    // If it's already loaded, we still want to set up listeners if they aren't somehow,
-    // but in Firebase, multiple onSnapshot calls on the same query are fine, 
-    // or we can just let it attach.
-    
-    // Migrate from local storage if data exists and hasn't been migrated
-    const STORAGE_KEY = 'al_dahr_academy_data';
-    const MIGRATED_KEY = 'al_dahr_academy_firebase_migrated';
-    
+    const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (!u) {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    setLoading(true);
+
+    // Validate connection
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        // Silently fail if not exists, but catch permission errors
+        if (error instanceof Error && error.message.includes('insufficient permissions')) {
+          console.error("Firebase connection test failed: Insufficient permissions");
+        }
+      }
+    };
+    testConnection();
+
     const migrateData = async () => {
+      const STORAGE_KEY = 'al_dahr_academy_data';
+      const MIGRATED_KEY = 'al_dahr_academy_firebase_migrated';
+      
       if (!localStorage.getItem(MIGRATED_KEY)) {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
@@ -28,26 +90,23 @@ export function useStore() {
             const parsed = JSON.parse(saved);
             if (parsed.students && Array.isArray(parsed.students)) {
               for (const student of parsed.students) {
-                await setDoc(doc(db, 'students', student.id), student);
+                await addStudent(student);
               }
             }
             if (parsed.transactions && Array.isArray(parsed.transactions)) {
               for (const transaction of parsed.transactions) {
-                await setDoc(doc(db, 'transactions', transaction.id), transaction);
+                await addTransaction(transaction);
               }
             }
             localStorage.setItem(MIGRATED_KEY, 'true');
-            console.log("Successfully migrated data to Firebase.");
           } catch (e) {
             console.error('Failed to migrate local storage data', e);
           }
         } else {
-          // If no local data, just mark as migrated
           localStorage.setItem(MIGRATED_KEY, 'true');
         }
       }
     };
-    
     migrateData();
 
     const studentsRef = collection(db, 'students');
@@ -58,7 +117,7 @@ export function useStore() {
       
       if (updated) {
         newStudents.forEach(student => {
-          updateDoc(doc(db, 'students', student.id), { ...student });
+          updateDoc(doc(db, 'students', student.id), { ...student }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `students/${student.id}`));
         });
       }
       
@@ -66,62 +125,86 @@ export function useStore() {
       isLoaded = true;
       setData(globalData);
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'students');
     });
 
     const transactionsRef = collection(db, 'transactions');
     const unsubscribeTransactions = onSnapshot(query(transactionsRef), (snapshot) => {
       const transactionsList = snapshot.docs.map(doc => doc.data() as Transaction);
-      // Sort transactions by date descending to match local storage behavior (where new ones were prepended)
       transactionsList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       
       globalData = { ...globalData, transactions: transactionsList };
       isLoaded = true;
       setData(globalData);
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'transactions');
     });
 
     return () => {
       unsubscribeStudents();
       unsubscribeTransactions();
     };
-  }, []);
+  }, [user]);
 
   const addStudent = async (student: Student) => {
-    setDoc(doc(db, 'students', student.id), student).catch(console.error);
+    try {
+      await setDoc(doc(db, 'students', student.id), student);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.CREATE, `students/${student.id}`);
+    }
   };
 
   const updateStudent = async (updatedStudent: Student) => {
-    setDoc(doc(db, 'students', updatedStudent.id), updatedStudent).catch(console.error);
+    try {
+      await setDoc(doc(db, 'students', updatedStudent.id), updatedStudent);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `students/${updatedStudent.id}`);
+    }
   };
 
   const deleteStudent = async (id: string) => {
-    deleteDoc(doc(db, 'students', id)).catch(console.error);
+    try {
+      await deleteDoc(doc(db, 'students', id));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, `students/${id}`);
+    }
   };
 
   const addTransaction = async (transaction: Transaction) => {
-    setDoc(doc(db, 'transactions', transaction.id), transaction).catch(console.error);
+    try {
+      await setDoc(doc(db, 'transactions', transaction.id), transaction);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.CREATE, `transactions/${transaction.id}`);
+    }
   };
 
   const updateTransaction = async (updatedTransaction: Transaction) => {
-    setDoc(doc(db, 'transactions', updatedTransaction.id), updatedTransaction).catch(console.error);
+    try {
+      await setDoc(doc(db, 'transactions', updatedTransaction.id), updatedTransaction);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `transactions/${updatedTransaction.id}`);
+    }
   };
 
   const deleteTransaction = async (id: string) => {
-    deleteDoc(doc(db, 'transactions', id)).catch(console.error);
+    try {
+      await deleteDoc(doc(db, 'transactions', id));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, `transactions/${id}`);
+    }
   };
 
   const importData = (importedData: AppData) => {
-    importedData.students.forEach(student => {
-      setDoc(doc(db, 'students', student.id), student);
-    });
-    importedData.transactions.forEach(transaction => {
-      setDoc(doc(db, 'transactions', transaction.id), transaction);
-    });
+    importedData.students.forEach(student => addStudent(student));
+    importedData.transactions.forEach(transaction => addTransaction(transaction));
   };
 
   return {
     data,
     loading,
+    user,
     addStudent,
     updateStudent,
     deleteStudent,

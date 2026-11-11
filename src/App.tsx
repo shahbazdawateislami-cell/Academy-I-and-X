@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -17,8 +12,24 @@ import History from './pages/History';
 import Backup from './pages/Backup';
 import Receipt from './pages/Receipt';
 import FeeReminders from './pages/FeeReminders';
+import Login from './pages/Login';
+import { useStore } from './store';
 
 export default function App() {
+  const { user, loading } = useStore();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#0B1F3A] border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
+
   return (
     <BrowserRouter>
       <Routes>
