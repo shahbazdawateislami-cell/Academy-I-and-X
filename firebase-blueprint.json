@@ -1,0 +1,50 @@
+{
+  "collections": [
+    {
+      "name": "students",
+      "fields": [
+        { "name": "name", "type": "string" },
+        { "name": "fatherName", "type": "string" },
+        { "name": "mobile", "type": "string" },
+        { "name": "totalFee", "type": "number" },
+        { "name": "paidFee", "type": "number" },
+        { "name": "remainingFee", "type": "number" },
+        { "name": "admissionDate", "type": "string" },
+        { "name": "notes", "type": "string", "optional": true },
+        { "name": "monthlyFee", "type": "number", "optional": true },
+        { "name": "lastFeeAddedMonth", "type": "string", "optional": true },
+        { "name": "status", "type": "string", "optional": true }
+      ],
+      "rules": [
+        {
+          "operations": ["read", "write"],
+          "condition": "true"
+        }
+      ]
+    },
+    {
+      "name": "transactions",
+      "fields": [
+        { "name": "type", "type": "string" },
+        { "name": "category", "type": "string" },
+        { "name": "amount", "type": "number" },
+        { "name": "date", "type": "string" },
+        { "name": "description", "type": "string", "optional": true },
+        { "name": "paymentMode", "type": "string" },
+        { "name": "studentId", "type": "string", "optional": true },
+        { "name": "month", "type": "string", "optional": true },
+        { "name": "receiptNo", "type": "string", "optional": true },
+        { "name": "previouslyPaid", "type": "number", "optional": true },
+        { "name": "totalPaidAfter", "type": "number", "optional": true },
+        { "name": "remainingBalanceAfter", "type": "number", "optional": true },
+        { "name": "paidTo", "type": "string", "optional": true }
+      ],
+      "rules": [
+        {
+          "operations": ["read", "write"],
+          "condition": "true"
+        }
+      ]
+    }
+  ]
+}
